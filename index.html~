@@ -1,0 +1,556 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML lang="ja">
+<HEAD>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<meta http-equiv="Content-Script-Type" content="text/javascript; charset=UTF-8">
+<meta http-equiv="Content-Style-Type" content="text/css">
+<!--<meta http-equiv="refresh" content="60"> -->
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Cache-Control" content="no-cache">
+
+<TITLE>Baby MIND DAQ monitor</TITLE>
+
+<STYLE type="text/css">
+<!--
+BODY {
+  color: #000000;
+  background-color: #FFFFFF;
+  margin-left: 3em;
+  margin-right: 3em;
+}
+A:link {color: #0000FF}
+A:visited {color: #550088}
+A:active {color: #990099}
+A:hover {color: #009900}
+.b{font-weight: bold}
+
+/* ===== Styles for MCR monitor (similar look & feel) ===== */
+:root {
+  --ok: #0ac70a;
+  --warn: #d40000;
+  --banner-ok-bg: #0b7a0b;
+  --banner-warn-bg: #990000;
+  --banner-fg: #ffffff;
+}
+
+table { border-collapse: collapse; }
+td, th { border: 2px solid #000; padding: 0.4rem 0.6rem; }
+th { background: #f0f0f0; text-align: left; }
+
+.lamp {
+  width: 26px; height: 26px; border-radius: 50%;
+  display: inline-block; margin-left: 10px; vertical-align: middle;
+  box-shadow: 0 0 10px rgba(0,0,0,0.4);
+  border: 2px solid #222;
+}
+.green { background-color: var(--ok); }
+.red { background-color: var(--warn); }
+
+/* ===== Unified status banner ===== */
+#mcr-status-banner {
+  position: sticky; top: 0; z-index: 1000;
+  display: block;
+  color: var(--banner-fg);
+  padding: 0.6rem 1rem; font-weight: 700; letter-spacing: 0.3px;
+  border-radius: 8px; margin-bottom: 1rem; text-align: center;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.25);
+}
+#mcr-status-banner.ok { background: var(--banner-ok-bg); }
+#mcr-status-banner.warn {
+  background: var(--banner-warn-bg);
+  animation: blink 1.2s steps(2, start) infinite;
+}
+@keyframes blink { 50% { opacity: 0.2; } }
+
+/* ===== Sound enable bar ===== */
+#mcr-enable-bar {
+  position: sticky; top: 0; z-index: 1001;
+  background: #f7f7f7; border: 1px solid #bbb; border-radius: 8px;
+  padding: 8px 12px; margin-bottom: 10px; display: none;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+}
+#mcr-enable-sound, #mcr-disable-sound {
+  padding: 6px 12px; border: 1px solid #333; border-radius: 6px;
+  background: #f5f5f5; cursor: pointer; font-weight: 600; margin-left: 8px;
+}
+
+@keyframes pulse { 0%{transform:scale(1)} 50%{transform:scale(1.03)} 100%{transform:scale(1)} }
+-->
+</STYLE>
+</HEAD>
+
+<body>
+
+<HR SIZE="3">
+<font size="+3"><B>Baby MIND DAQ monitor</B></font>
+<HR SIZE="3">
+
+<font size="+2">
+  Last update is <span id="page-last-update">Loading...</span> (JST)
+</font>
+
+
+<!-- ===================== MCR datasize monitor UI ===================== -->
+<div id="mcr-status-banner" class="ok" role="status" aria-live="polite">
+  ✅ All good: all MCR data sizes increased within the last 30 minutes.
+</div>
+
+<div id="mcr-enable-bar">
+  🔊 To allow alarms to play automatically, please click:
+  <button id="mcr-enable-sound">Enable sound (click once)</button>
+  <button id="mcr-disable-sound">Disable sound</button>
+ <!-- Button usage notes (English) -->
+  <div id="mcr-sound-help" style="margin-top:8px; font-size:0.95rem;">
+    <div><b>Enable sound:</b> Unlocks audio permission in your browser (required for automatic alarms).</div>
+    <div><b>Test sound:</b> After enabling, this button toggles a test alarm sound ON/OFF.</div>
+    <div><b>Disable sound:</b> Stops any sound immediately and disables alarms until you enable again.</div>
+  </div>
+</div>
+
+<font size="+2"><B>MCR datasize monitor (last 30 minutes)</B></font><br><br>
+
+<table>
+  <tr>
+    <th>MCR</th>
+    <th>OK?</th>
+    <th>Last update time (JST)</th>
+    <th>Latest data size [kB]</th>
+    <th>Data size 30 min ago [kB]</th>
+  </tr>
+  <tbody id="mcr-table-body"></tbody>
+</table>
+
+<br>
+<font size="+2"><B>Status Lamp:</B></font>
+<span id="mcr-lamp" class="lamp green" aria-label="status lamp"></span>
+<!-- Status lamp meaning (English) -->
+<div id="mcr-lamp-help" style="margin-top:8px; font-size:0.95rem;">
+  <div><b>Green:</b> All MCR data sizes increased within the last 30 minutes.</div>
+  <div><b>Red:</b> At least one MCR did not increase within the last 30 minutes (alarm condition).</div>
+</div>
+
+<br><br>
+
+<!-- ===================== Original plots ===================== -->
+<table border="1">
+  <tr>
+    <th valign="top">
+      <font size="+2">Data size (12 hours)</font><BR>
+      <a href="../../wagasci/bmom/bmom_12.png" title="12 hours">
+        <img src="../../wagasci/bmom/bmom_12.png" width="480">
+      </a>
+      <br>
+
+      <font size="+2">Data speed (12 hours)</font><br>
+      <a href="../../wagasci/bmom/bmom_12_speed.png" title="12 hours data speed">
+        <img src="../../wagasci/bmom/bmom_12_speed.png" width="480">
+      </a>
+      <br>
+    </th>
+
+    <th valign="top">
+      <font size="+2">Data size (2 hours)</font><BR>
+      <a href="../../wagasci/bmom/bmom_2.png" title="2 hour">
+        <img src="../../wagasci/bmom/bmom_2.png" width="480">
+      </a>
+      <br>
+
+      <font size="+2">Data speed (2 hours)</font><BR>
+      <a href="../../wagasci/bmom/bmom_2_speed.png" title="2 hour data speed">
+        <img src="../../wagasci/bmom/bmom_2_speed.png" width="480">
+      </a>
+      <br>
+    </th>
+  </tr>
+
+  <tr>
+    <th colspan="2" valign="top">
+      <font size="+2">DAQ control window</font><BR>
+      <a href="../../wagasci/bmom/ctr.png" title="DAQ control window">
+        <img src="../../wagasci/bmom/ctr.png" width="900">
+      </a>
+    </th>
+  </tr>
+</table>
+
+<!-- ===================== Alarm sound ===================== -->
+<!-- Pre-beep sound (played for 5 seconds) -->
+<audio id="mcr-beep-sound" preload="auto">
+  <source src="bmalarm.wav" type="audio/wav">
+</audio>
+
+<script>
+  /* ===================== Settings =====================
+     - IMPORTANT: DATASIZE_DIR_URL must be a URL path accessible from the browser.
+     - Example:
+       If this HTML is at .../bmom/index.html and text files are at .../bmom/datasize/mcr_0_12h.txt,
+       then DATASIZE_DIR_URL = "datasize" is correct.
+  */
+  const MCR_COUNT = 8;                 // MCR 0..7
+  const THRESHOLD_MINUTES = 30;        // Window to judge "stopped"
+  const LINES_TO_CHECK = 10;           // ~30 minutes if 3-minute step
+  const POLL_MS = 30000;               // Poll interval (30s)
+  const DATASIZE_DIR_URL = "../../wagasci/bmom/datasize"; // <-- Change this if needed
+  //const DATASIZE_DIR_URL = "datasize";
+  let soundEnabled = false;
+  let testAlarmPlaying = false;
+  let lastIsOk = true;
+
+  /* ===================== UI helpers ===================== */
+  function setLamp(isOk) {
+    const lamp = document.getElementById("mcr-lamp");
+    if (!lamp) return;
+    lamp.classList.toggle("green", isOk);
+    lamp.classList.toggle("red", !isOk);
+  }
+
+  function setBanner(isOk, badList) {
+    const banner = document.getElementById("mcr-status-banner");
+    if (!banner) return;
+
+    banner.classList.toggle("ok", isOk);
+    banner.classList.toggle("warn", !isOk);
+
+    banner.textContent = isOk
+      ? "✅ All good: all MCR data sizes increased within the last 30 minutes."
+      : ("⚠️ Warning: NO size increase in last 30 minutes for: " + badList.join(", ") + " !");
+
+    banner.setAttribute("role", isOk ? "status" : "alert");
+    banner.setAttribute("aria-live", isOk ? "polite" : "assertive");
+  }
+
+  function unixToJstString(unixSec) {
+    if (!unixSec || !isFinite(unixSec)) return "N/A";
+    const d = new Date(unixSec * 1000);
+    return d.toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", hour12: false });
+  }
+
+  /* Show the page refresh/load time in JST */
+  function updatePageLastUpdateNow() {
+    const el = document.getElementById("page-last-update");
+    if (!el) return;
+    const now = new Date();
+    el.textContent = now.toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", hour12: false });
+  }
+
+
+
+  /* ===================== Parse logic ===================== */
+  function parseTxt(text) {
+    // Each line is: "<unixtime> <size>"
+    const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    const pairs = [];
+    for (const ln of lines) {
+      const m = ln.match(/^(\d+)\s+(\d+)/);
+      if (m) pairs.push({ t: Number(m[1]), s: Number(m[2]) });
+    }
+    return pairs;
+  }
+
+  async function fetchTxt(url) {
+    // Use cache: "no-store" to minimize stale content
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error("Fetch failed " + res.status + ": " + url);
+    return await res.text();
+  }
+
+  /* Update the top "Last update" using mcr_0_12h.txt Last-Modified (fallback: latest unixtime in file) */
+  async function updatePageLastUpdateFromMcr0(nowMs) {
+    const el = document.getElementById("page-last-update");
+    if (!el) return;
+
+    const url = DATASIZE_DIR_URL + "/mcr_0_12h.txt";
+
+    try {
+      // GET once (we already need the content sometimes); no-store to avoid stale headers/content
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) throw new Error("Fetch failed " + res.status);
+
+      // 1) Prefer HTTP Last-Modified header (file modification time on the server)
+      const lm = res.headers.get("Last-Modified");
+      if (lm) {
+        const d = new Date(lm);
+        // If parsing succeeded, show it in JST
+        if (!isNaN(d.getTime())) {
+          el.textContent = d.toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", hour12: false });
+          return;
+        }
+      }
+
+      // 2) Fallback: use the latest unixtime in the file (data timestamp)
+      const txt = await res.text();
+      const pairs = parseTxt(txt);
+      const latest = latestPoint(pairs);
+      el.textContent = latest ? unixToJstString(latest.t) : "N/A";
+    } catch {
+      el.textContent = "N/A";
+    }
+  }
+
+
+  /* Pick the data point closest to (now - THRESHOLD_MINUTES), but not newer than that target time */
+  function pick30minAgoPoint(pairs, nowMs) {
+    if (!pairs || pairs.length === 0) return null;
+
+    const targetSec = Math.floor((nowMs - THRESHOLD_MINUTES * 60000) / 1000);
+
+    // Find the newest point with timestamp <= targetSec
+    // (Scan from the end for efficiency)
+    for (let j = pairs.length - 1; j >= 0; j--) {
+      if (pairs[j].t <= targetSec) return pairs[j];
+    }
+
+    // If all points are newer than target (file is too short / started recently),
+    // fallback to the oldest point available.
+    return pairs[0];
+  }
+
+
+  function latestPoint(pairs) {
+    return pairs.length ? pairs[pairs.length - 1] : null;
+  }
+
+  /* Return the last point where the size changed (increase OR decrease) compared to the previous sample */
+  function lastChangePoint(pairs) {
+    if (!pairs || pairs.length < 2) return null;
+  
+    // Scan from the end: find the most recent index j where s[j] != s[j-1]
+    for (let j = pairs.length - 1; j >= 1; j--) {
+      if (pairs[j].s !== pairs[j - 1].s) return pairs[j];
+    }
+
+    // No change found (size is constant in the whole file)
+    return null;
+  }
+
+
+  function ensureTableRows() {
+    const tbody = document.getElementById("mcr-table-body");
+    if (!tbody) return;
+    if (tbody.children.length === MCR_COUNT) return;
+
+    tbody.innerHTML = "";
+    for (let i = 0; i < MCR_COUNT; i++) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = ''
+        + '<th scope="row">MCR ' + i + '</th>'
+        + '<td id="mcr-ok-' + i + '">Loading...</td>'
+        + '<td id="mcr-time-' + i + '">Loading...</td>'
+        + '<td id="mcr-latest-' + i + '">Loading...</td>'
+        + '<td id="mcr-ago-' + i + '">Loading...</td>';
+      tbody.appendChild(tr);
+    }
+  }
+
+  /* ===================== Alarm control ===================== */
+  /* Start/stop alarm using a single audio element */
+  async function startOrStopAlarm(shouldStart) {
+    const beep = document.getElementById("mcr-beep-sound");
+    if (!beep) return;
+
+    if (shouldStart) {
+      // If sound is not enabled, show the enable bar and do not play
+      if (!soundEnabled) {
+        const bar = document.getElementById("mcr-enable-bar");
+        const btn = document.getElementById("mcr-enable-sound");
+        if (bar) bar.style.display = "block";
+        if (btn) {
+          btn.style.boxShadow = "0 0 0 3px rgba(255,0,0,0.35)";
+          btn.style.animation = "pulse 1.5s infinite";
+        }
+        return;
+      }
+
+      try {
+        beep.loop = true;
+        await beep.play();
+      } catch {
+        // Autoplay may still be blocked; retry later
+        setTimeout(() => startOrStopAlarm(true), 5000);
+      }
+    } else {
+      beep.pause();
+      beep.currentTime = 0;
+      beep.loop = false;
+    }
+  }
+
+
+  /* ===================== Main evaluation loop ===================== */
+  async function evaluateMcrStatus() {
+    ensureTableRows();
+
+    const bad = [];
+    const nowMs = Date.now();
+
+    for (let i = 0; i < MCR_COUNT; i++) {
+      const url = DATASIZE_DIR_URL + "/mcr_" + i + "_12h.txt";
+
+      const okCell = document.getElementById("mcr-ok-" + i);
+      const timeCell = document.getElementById("mcr-time-" + i);
+      const latestCell = document.getElementById("mcr-latest-" + i);
+      const agoCell = document.getElementById("mcr-ago-" + i);
+
+      try {
+        const txt = await fetchTxt(url);
+        const pairs = parseTxt(txt);
+
+        const latest = latestPoint(pairs);
+        const ago = pick30minAgoPoint(pairs, nowMs);
+        const lastChg = lastChangePoint(pairs);
+
+        // Decide OK/NG:
+        // - Need enough data points
+        // - Latest size must be greater than "30 minutes ago" size
+        // - Latest timestamp must not be older than 30 minutes (extra safety)
+        let isOk = false;
+        if (latest && ago && lastChg) {
+          // "OK" means: size changed (increase OR decrease) within the last 30 minutes
+          // Use the timestamp when the size last increased (not the last line timestamp)
+          const diffMin = (nowMs - lastChg.t * 1000) / 60000;
+          isOk = (diffMin <= THRESHOLD_MINUTES);
+        }
+
+        if (!isOk) bad.push("MCR" + i);
+
+        if (okCell) okCell.textContent = isOk ? "OK" : "NG";
+        if (timeCell) timeCell.textContent = lastChg ? unixToJstString(lastChg.t) : "N/A";
+        if (latestCell) latestCell.textContent = latest ? String(latest.s) : "N/A";
+        if (agoCell) agoCell.textContent = ago ? String(ago.s) : "N/A";
+      } catch {
+        // Any fetch/parse error is treated as NG
+        bad.push("MCR" + i);
+        if (okCell) okCell.textContent = "NG (fetch/parse error)";
+        if (timeCell) timeCell.textContent = "N/A";
+        if (latestCell) latestCell.textContent = "N/A";
+        if (agoCell) agoCell.textContent = "N/A";
+      }
+    }
+
+    const allOk = (bad.length === 0);
+    setLamp(allOk);
+    setBanner(allOk, bad);
+    
+    // Do not stop the sound during "Test sound" mode.
+    // But if the system becomes NG, override the test and start the real alarm.
+    if (!allOk) {
+      if (testAlarmPlaying) {
+        testAlarmPlaying = false;
+        const btnEnable = document.getElementById("mcr-enable-sound");
+        if (btnEnable) btnEnable.textContent = "Test sound (click to start/stop)";
+      }
+      startOrStopAlarm(true);
+    } else {
+      if (!testAlarmPlaying) startOrStopAlarm(false);
+  　}
+
+  　lastIsOk = allOk;
+  }
+
+  /* ===================== Sound buttons ===================== */
+  (function setupSoundButtons() {
+    const bar = document.getElementById("mcr-enable-bar");
+    const btnEnable = document.getElementById("mcr-enable-sound");
+    const btnDisable = document.getElementById("mcr-disable-sound");
+    const beep = document.getElementById("mcr-beep-sound");
+
+    if (bar) bar.style.display = "block";
+
+    if (btnEnable) {
+      btnEnable.addEventListener("click", async () => {
+        try {
+          // First click: unlock audio permission
+          if (!soundEnabled) {
+            beep.volume = 0.01;
+            beep.loop = false;
+            await beep.play();
+            await new Promise(r => setTimeout(r, 150));
+            beep.pause();
+            beep.currentTime = 0;
+            beep.volume = 1.0;
+
+            soundEnabled = true;
+            btnEnable.textContent = "Test sound (click to start/stop)";
+            btnEnable.style.boxShadow = "none";
+            btnEnable.style.animation = "none";
+
+            // If current status is NG, start the real alarm immediately
+            evaluateMcrStatus();
+            return;
+          }
+
+          // After enabled: toggle manual test sound
+          if (!testAlarmPlaying) {
+            beep.loop = true;
+            beep.currentTime = 0;
+            await beep.play();
+            testAlarmPlaying = true;
+            btnEnable.textContent = "Stop test sound";
+          } else {
+            beep.pause();
+            beep.currentTime = 0;
+            beep.loop = false;
+            testAlarmPlaying = false;
+            btnEnable.textContent = "Test sound (click to start/stop)";
+          }
+        } catch {
+          alert("Autoplay blocked. Please click again or check site permissions for sound.");
+        }
+      });
+    }
+
+    if (btnDisable) {
+      btnDisable.addEventListener("click", () => {
+        // Disable sound immediately and revert to the initial state
+        soundEnabled = false;
+        testAlarmPlaying = false;
+
+        if (beep) {
+          beep.pause();
+          beep.currentTime = 0;
+          beep.loop = false;
+        }
+
+        if (btnEnable) {
+          btnEnable.textContent = "Enable sound (click once)";
+          btnEnable.style.boxShadow = "none";
+          btnEnable.style.animation = "none";
+        }
+
+        // Stop the alternating alarm loop immediately
+        startOrStopAlarm(false);
+      });
+    }
+  })();
+
+  /* ===================== Watchdogs ===================== */
+  window.addEventListener("load", () => {
+    updatePageLastUpdateFromMcr0(Date.now());
+    evaluateMcrStatus();
+
+    setInterval(() => {
+      const nowMs = Date.now();
+      updatePageLastUpdateFromMcr0(nowMs);
+      evaluateMcrStatus();
+    }, POLL_MS);
+  });
+
+
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) evaluateMcrStatus();
+  });
+
+  // If status is NG and sound is enabled but audio is paused for some reason, try to resume
+  setInterval(() => {
+    const beep = document.getElementById("mcr-beep-sound");
+    if (!lastIsOk && soundEnabled && beep && beep.paused) {
+      startOrStopAlarm(true);
+    }
+  }, 10000);
+
+
+</script>
+
+</body>
+</html>
