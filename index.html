@@ -137,13 +137,13 @@ th { background: #f0f0f0; text-align: left; }
     <th valign="top">
       <font size="+2">Data size (12 hours)</font><BR>
       <a href="../../wagasci/bmom/bmom_12.png" title="12 hours">
-        <img src="../../wagasci/bmom/bmom_12.png" width="480">
+        <img id="img-bmom-12" src="../../wagasci/bmom/bmom_12.png" width="480">
       </a>
       <br>
 
       <font size="+2">Data speed (12 hours)</font><br>
       <a href="../../wagasci/bmom/bmom_12_speed.png" title="12 hours data speed">
-        <img src="../../wagasci/bmom/bmom_12_speed.png" width="480">
+        <img id="img-bmom-12speed" src="../../wagasci/bmom/bmom_12_speed.png" width="480">
       </a>
       <br>
     </th>
@@ -151,13 +151,13 @@ th { background: #f0f0f0; text-align: left; }
     <th valign="top">
       <font size="+2">Data size (2 hours)</font><BR>
       <a href="../../wagasci/bmom/bmom_2.png" title="2 hour">
-        <img src="../../wagasci/bmom/bmom_2.png" width="480">
+        <img id="img-bmom-2" src="../../wagasci/bmom/bmom_2.png" width="480">
       </a>
       <br>
 
       <font size="+2">Data speed (2 hours)</font><BR>
       <a href="../../wagasci/bmom/bmom_2_speed.png" title="2 hour data speed">
-        <img src="../../wagasci/bmom/bmom_2_speed.png" width="480">
+        <img id="img-bmom-2speed" src="../../wagasci/bmom/bmom_2_speed.png" width="480">
       </a>
       <br>
     </th>
@@ -167,7 +167,7 @@ th { background: #f0f0f0; text-align: left; }
     <th colspan="2" valign="top">
       <font size="+2">DAQ control window</font><BR>
       <a href="../../wagasci/bmom/ctr.png" title="DAQ control window">
-        <img src="../../wagasci/bmom/ctr.png" width="900">
+        <img id="img-ctr" src="../../wagasci/bmom/ctr.png" width="900">
       </a>
     </th>
   </tr>
@@ -523,15 +523,39 @@ th { background: #f0f0f0; text-align: left; }
     }
   })();
 
+  /* Force-reload PNG images by updating their src with a cache-busting query */
+  function refreshMonitorImages(nowMs) {
+    const ids = [
+      "img-bmom-12",
+      "img-bmom-12speed",
+      "img-bmom-2",
+      "img-bmom-2speed",
+      "img-ctr",
+    ];
+
+    for (const id of ids) {
+      const img = document.getElementById(id);
+      if (!img) continue;
+
+      // Keep the original URL (without old query) and append a new cache buster
+      const base = img.src.split("?")[0];
+      img.src = base + "?t=" + nowMs;
+    }
+  }
+
+
   /* ===================== Watchdogs ===================== */
   window.addEventListener("load", () => {
-    updatePageLastUpdateFromMcr0(Date.now());
+    const nowMs = Date.now();
+    updatePageLastUpdateFromMcr0(nowMs);
     evaluateMcrStatus();
+    refreshMonitorImages(nowMs);
 
     setInterval(() => {
       const nowMs = Date.now();
       updatePageLastUpdateFromMcr0(nowMs);
       evaluateMcrStatus();
+      refreshMonitorImages(nowMs);
     }, POLL_MS);
   });
 
