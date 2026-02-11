@@ -5,6 +5,7 @@ This repository contains a single HTML page that monitors Baby MIND DAQ activity
 The page is intended to be kept open on a control-room monitoring PC so that DAQ issues can be noticed quickly.
 
 In addition, the page supports a **global alarm enable/disable switch shared across all PCs** by storing a shared state file on the server. Local **audio permission** and **test sound** remain per-PC.
+The shared (global) alarm state is also shown in the UI as a button-like status chip (**alarm on/off**), so all viewers can see when someone disabled/enabled the real alarm.
 
 ---
 
@@ -57,6 +58,10 @@ If **any** MCR is not OK, the overall page status becomes **WARN** and the alarm
 - **Green (OK):** all MCRs changed within the last 30 minutes
 - **Red (WARN):** at least one MCR has not changed for > 30 minutes
 
+### Global alarm status indicator (shared state visibility)
+The page displays a non-clickable, button-like status chip:
+- **alarm on** / **alarm off** (shared across all PCs, updated by periodic polling)
+
 ### Sound controls
 Browsers typically block autoplay audio unless the user has interacted with the page. This page uses an explicit button to unlock audio.
 
@@ -79,6 +84,10 @@ The **real alarm** (alarm during WARN/NG state) can be enabled/disabled **global
 Important notes:
 - **Browser audio permission cannot be shared.** Each PC must click **Enable sound** once to unlock audio in its own browser.
 - **Test sound is per-PC only** and is not affected by the global state.
+
+### Shared state polling interval (faster than the main watchdog)
+To reflect changes from other PCs quickly, the page polls the shared state more frequently than the main loop:
+- `fetchGlobalEnabled()` is called every **3 seconds** (3000 ms) to refresh the status chip and stop the real alarm if needed.
 
 ### Real alarm stop behavior when globally disabled
 If the shared state becomes disabled while the real alarm is playing on a PC, the page stops the real alarm immediately on that PC. Test sound (manual) is not stopped.
@@ -114,6 +123,13 @@ Edit these constants in the `<script>` section:
 - `POLL_MS`  
   Update interval (default: 30000 ms = 30 s).
 
+### UI configuration (global alarm status chip)
+The HTML includes a non-clickable, button-like element that shows the shared global state:
+- `Alarm status: alarm on/off`
+
+Its visual style is controlled by CSS classes on `#mcr-global-state`:
+- `alarm-on`, `alarm-off`, `alarm-loading` (toggled by JavaScript)
+
 ### Shared state configuration (global enable/disable)
 To share the enable/disable flag across PCs, configure these URLs in the HTML:
 
@@ -130,7 +146,7 @@ To share the enable/disable flag across PCs, configure these URLs in the HTML:
   ```
 
 The page:
-- Calls `fetch(STATE_URL)` periodically to update `globalEnabled`.
+- Calls `fetch(STATE_URL)` periodically to update `globalEnabled` (and refresh the status chip).
 - Calls `fetch(SET_STATE_URL + "?enabled=0|1&by=...")` when the user clicks Disable/Enable.
 
 The expected JSON structure is:
@@ -170,7 +186,7 @@ If the endpoint is missing or the path is wrong, the browser console will show e
 - If the alarm sounds (WARN state), the shift person can contact the DAQ expert promptly.
 
 If someone disables the real alarm globally:
-- The real alarm should stop on all PCs within the polling interval.
+- The real alarm should stop on all PCs within the polling interval (default: ~3 seconds for shared-state polling).
 - When the alarm should be re-enabled globally, click **Enable sound** (or provide a dedicated global enable action) to set the shared state back to enabled.
 
 ---
@@ -204,3 +220,4 @@ If someone disables the real alarm globally:
 ### Disable updates the file on the server, but the page still behaves incorrectly
 - Ensure the page fetches `STATE_URL` every cycle (or at least periodically) and updates `globalEnabled`.
 - Ensure the real alarm can be stopped immediately when `globalEnabled` becomes false (track whether the real alarm is playing separately from test sound).
+- Ensure the UI indicator is refreshed when the shared state is fetched (e.g., call `updateGlobalStateUI()` inside `fetchGlobalEnabled()`).

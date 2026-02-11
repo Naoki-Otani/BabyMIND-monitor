@@ -74,6 +74,52 @@ th { background: #f0f0f0; text-align: left; }
   background: #f5f5f5; cursor: pointer; font-weight: 600; margin-left: 8px;
 }
 
+/* ===== Global alarm status (button-like, non-clickable) ===== */
+/* This makes the shared alarm ON/OFF state visible to all viewers. */
+#mcr-global-state{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 8px 12px;
+  font-weight: 700;
+  border: 2px solid #222;
+  border-radius: 999px; /* pill shape */
+  background: #f5f5f5;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.18);
+  user-select: none;
+  cursor: default; /* looks like a button, but not clickable */
+}
+/* Small dot indicator on the left */
+#mcr-global-state::before{
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid rgba(0,0,0,0.45);
+  box-shadow: 0 0 8px rgba(0,0,0,0.18);
+  display: inline-block;
+}
+/* ON/OFF styles are applied via JS by toggling classes on #mcr-global-state */
+#mcr-global-state.alarm-on{
+  background: rgba(10,199,10,0.12);
+}
+#mcr-global-state.alarm-on::before{
+  background: var(--ok);
+}
+#mcr-global-state.alarm-off{
+  background: rgba(212,0,0,0.12);
+}
+#mcr-global-state.alarm-off::before{
+  background: var(--warn);
+}
+#mcr-global-state.alarm-loading{
+  background: rgba(0,0,0,0.06);
+}
+#mcr-global-state.alarm-loading::before{
+  background: #777;
+}
+
 @keyframes pulse { 0%{transform:scale(1)} 50%{transform:scale(1.03)} 100%{transform:scale(1)} }
 -->
 </STYLE>
@@ -96,6 +142,11 @@ th { background: #f0f0f0; text-align: left; }
 </div>
 
 <div id="mcr-enable-bar">
+  <div id="mcr-global-state" class="alarm-loading">
+    Alarm status: <span id="mcr-global-state-text">Loading...</span>
+  </div>
+  <br>
+
   🔊 To allow alarms to play automatically, please click:
   <button id="mcr-enable-sound">Enable sound (click once)</button>
   <button id="mcr-disable-sound">Disable sound</button>
@@ -213,10 +264,33 @@ th { background: #f0f0f0; text-align: left; }
       if (!res.ok) throw new Error("Failed to fetch global state");
       const js = await res.json();
       if (typeof js.enabled === "boolean") globalEnabled = js.enabled;
+      updateGlobalStateUI();
     } catch (e) {
       // If state file is not reachable, keep the last known value.
+      updateGlobalStateUI();
     }
   }
+
+  /* Optional (advanced) UI: A full "card" layout with meta (who/when). */
+  /* Keep this as a reference in case you want a richer status display later. */
+  // function updateGlobalStateCard(stateObj) {
+  //   const card = document.getElementById("mcr-global-alarm");
+  //   const text = document.getElementById("mcr-global-alarm-text");
+  //   const meta = document.getElementById("mcr-global-alarm-meta");
+  //   if (!card || !text) return;
+  //
+  //   const isOn = !!globalEnabled;
+  //   card.classList.toggle("alarm-on", isOn);
+  //   card.classList.toggle("alarm-off", !isOn);
+  //   text.textContent = isOn ? "ALARM ON" : "ALARM OFF";
+  //
+  //   if (meta && stateObj) {
+  //     const by = stateObj.updated_by ? String(stateObj.updated_by) : "";
+  //     const at = stateObj.updated_at ? new Date(stateObj.updated_at * 1000) : null;
+  //     const atStr = at ? at.toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", hour12: false }) : "";
+  //     meta.textContent = (by || atStr) ? (`${by}${by && atStr ? " / " : ""}${atStr}`) : "";
+  //   }
+  // }
 
   async function setGlobalEnabled(enabled) {
     try {
@@ -234,9 +308,33 @@ th { background: #f0f0f0; text-align: left; }
     } catch (e) {
       globalEnabled = enabled;
     }
+    updateGlobalStateUI();
   }
 
   /* ===================== UI helpers ===================== */
+
+  function updateGlobalStateUI() {
+    const chip = document.getElementById("mcr-global-state");
+    const el = document.getElementById("mcr-global-state-text");
+    if (!chip || !el) return;
+
+    chip.classList.remove("alarm-on","alarm-off","alarm-loading");
+
+    if (typeof globalEnabled !== "boolean") {
+      chip.classList.add("alarm-loading");
+      el.textContent = "Loading...";
+      return;
+    }
+
+    if (globalEnabled) {
+      chip.classList.add("alarm-on");
+      el.textContent = "alarm on";
+    } else {
+      chip.classList.add("alarm-off");
+      el.textContent = "alarm off";
+    }
+  }
+
   function setLamp(isOk) {
     const lamp = document.getElementById("mcr-lamp");
     if (!lamp) return;
@@ -353,7 +451,7 @@ th { background: #f0f0f0; text-align: left; }
   /* Return the last point where the size changed (increase OR decrease) compared to the previous sample */
   function lastChangePoint(pairs) {
     if (!pairs || pairs.length < 2) return null;
-  
+
     // Scan from the end: find the most recent index j where s[j] != s[j-1]
     for (let j = pairs.length - 1; j >= 1; j--) {
       if (pairs[j].s !== pairs[j - 1].s) return pairs[j];
@@ -485,7 +583,7 @@ th { background: #f0f0f0; text-align: left; }
     const allOk = (bad.length === 0);
     setLamp(allOk);
     setBanner(allOk, bad);
-    
+
     // Do not stop the sound during "Test sound" mode.
     // But if the system becomes NG, override the test and start the real alarm.
     if (!allOk) {
@@ -614,6 +712,12 @@ th { background: #f0f0f0; text-align: left; }
     updatePageLastUpdateFromMcr0(nowMs);
     evaluateMcrStatus();
     refreshMonitorImages(nowMs);
+
+    // Poll the shared alarm ON/OFF state more frequently than the main watchdog loop.
+    // This makes changes from other PCs visible quickly.
+    setInterval(() => {
+      fetchGlobalEnabled(); // this should call updateGlobalStateUI() inside it
+    }, 3000);
 
     setInterval(() => {
       const nowMs = Date.now();
