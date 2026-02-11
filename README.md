@@ -5,6 +5,7 @@ This repository contains a single HTML page that monitors Baby MIND DAQ activity
 The page is intended to be kept open on a control-room monitoring PC so that DAQ issues can be noticed quickly.
 
 In addition, the page supports a **global alarm enable/disable switch shared across all PCs** by storing a shared state file on the server. Local **audio permission** and **test sound** remain per-PC.
+
 ---
 
 ## What it monitors
