@@ -1,0 +1,8 @@
+# Enable CGI execution in this directory
+Options +ExecCGI
+
+# Treat .cgi files as CGI scripts
+AddHandler cgi-script .cgi
+
+# Do not cache CGI responses
+Header set Cache-Control "no-store"

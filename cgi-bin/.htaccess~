@@ -1,0 +1,4 @@
+# Enable CGI execution in this directory (only works if AllowOverride Options is permitted)
+#Options +ExecCGI
+#AddHandler cgi-script .cgi
+THIS_IS_SYNTAX_ERROR

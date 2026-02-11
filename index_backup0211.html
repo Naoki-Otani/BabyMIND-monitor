@@ -195,46 +195,13 @@ th { background: #f0f0f0; text-align: left; }
   let soundEnabled = false;
   let testAlarmPlaying = false;
   let lastIsOk = true;
-  let realAlarmPlaying = false; // True only when the real alarm (NG) is playing
 
   const STATE_URL = "state/alarm_state.json";
-  const SET_STATE_URL = "state/set_alarm_state.php";
+  const SET_STATE_URL = "cgi-bin/set_alarm_state.cgi";
 
   let audioUnlocked = false;
   let globalEnabled = true;
 
- /* ===================== Shared state helpers =====================
-     - globalEnabled is shared across all PCs via STATE_URL / SET_STATE_URL
-     - Browser audio permission (soundEnabled) is per-PC and cannot be shared
-  */
-  async function fetchGlobalEnabled() {
-    try {
-      const res = await fetch(STATE_URL + "?t=" + Date.now(), { cache: "no-store" });
-      if (!res.ok) throw new Error("Failed to fetch global state");
-      const js = await res.json();
-      if (typeof js.enabled === "boolean") globalEnabled = js.enabled;
-    } catch (e) {
-      // If state file is not reachable, keep the last known value.
-    }
-  }
-
-  async function setGlobalEnabled(enabled) {
-    try {
-      const res = await fetch(
-        SET_STATE_URL
-          + "?enabled=" + (enabled ? "1" : "0")
-          + "&by=browser"
-          + "&t=" + Date.now(),
-        { cache: "no-store" }
-      );
-      if (!res.ok) throw new Error("Failed to set global state");
-      const js = await res.json();
-      if (typeof js.enabled === "boolean") globalEnabled = js.enabled;
-      else globalEnabled = enabled;
-    } catch (e) {
-      globalEnabled = enabled;
-    }
-  }
 
   /* ===================== UI helpers ===================== */
   function setLamp(isOk) {
@@ -389,10 +356,6 @@ th { background: #f0f0f0; text-align: left; }
     if (!beep) return;
 
     if (shouldStart) {
-      // Respect the shared (global) enable/disable flag.
-      // If globally disabled, never play sound even on an NG state.
-      if (!globalEnabled) return;
-
       // If sound is not enabled, show the enable bar and do not play
       if (!soundEnabled) {
         const bar = document.getElementById("mcr-enable-bar");
@@ -408,7 +371,6 @@ th { background: #f0f0f0; text-align: left; }
       try {
         beep.loop = true;
         await beep.play();
-        realAlarmPlaying = true;
       } catch {
         // Autoplay may still be blocked; retry later
         setTimeout(() => startOrStopAlarm(true), 5000);
@@ -417,7 +379,6 @@ th { background: #f0f0f0; text-align: left; }
       beep.pause();
       beep.currentTime = 0;
       beep.loop = false;
-      realAlarmPlaying = false;
     }
   }
 
@@ -428,15 +389,6 @@ th { background: #f0f0f0; text-align: left; }
 
     const bad = [];
     const nowMs = Date.now();
-
-    // Update shared enable/disable state each cycle.
-    await fetchGlobalEnabled();
-
-    // If someone disabled the alarm globally, stop the REAL alarm immediately on this PC.
-    // (Test sound is per-PC and should not be affected.)
-    if (!globalEnabled && realAlarmPlaying) {
-      startOrStopAlarm(false);
-    }
 
     for (let i = 0; i < MCR_COUNT; i++) {
       const url = DATASIZE_DIR_URL + "/mcr_" + i + "_12h.txt";
@@ -494,9 +446,7 @@ th { background: #f0f0f0; text-align: left; }
         const btnEnable = document.getElementById("mcr-enable-sound");
         if (btnEnable) btnEnable.textContent = "Test sound (click to start/stop)";
       }
-      // Only try to play when globally enabled.
-      if (globalEnabled) startOrStopAlarm(true);
-
+      startOrStopAlarm(true);
     } else {
       if (!testAlarmPlaying) startOrStopAlarm(false);
   　}
@@ -531,10 +481,6 @@ th { background: #f0f0f0; text-align: left; }
             btnEnable.style.boxShadow = "none";
             btnEnable.style.animation = "none";
 
-            // Enable alarm globally (shared) when someone enables sound locally.
-            // Note: Other PCs still need to click once to unlock audio permission.
-            await setGlobalEnabled(true);
-
             // If current status is NG, start the real alarm immediately
             evaluateMcrStatus();
             return;
@@ -561,11 +507,8 @@ th { background: #f0f0f0; text-align: left; }
     }
 
     if (btnDisable) {
-        btnDisable.addEventListener("click", async () => {
-        // Disable alarm globally (shared), and also stop local sound immediately.
-        await setGlobalEnabled(false);
-
-        // Stop local sound immediately and revert to the initial local state
+      btnDisable.addEventListener("click", () => {
+        // Disable sound immediately and revert to the initial state
         soundEnabled = false;
         testAlarmPlaying = false;
 
@@ -632,17 +575,9 @@ th { background: #f0f0f0; text-align: left; }
   // If status is NG and sound is enabled but audio is paused for some reason, try to resume
   setInterval(() => {
     const beep = document.getElementById("mcr-beep-sound");
-    // Refresh global state periodically, then try resume only if globally enabled.
-    fetchGlobalEnabled().then(() => {
-      // If globally disabled, stop the REAL alarm immediately.
-      if (!globalEnabled && realAlarmPlaying) {
-        startOrStopAlarm(false);
-        return;
-      }
-      if (!lastIsOk && globalEnabled && soundEnabled && beep && beep.paused) {
-        startOrStopAlarm(true);
-      }
-    });
+    if (!lastIsOk && soundEnabled && beep && beep.paused) {
+      startOrStopAlarm(true);
+    }
   }, 10000);
 
 
