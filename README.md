@@ -54,6 +54,26 @@ If **any** MCR is not OK, the overall page status becomes **WARN** and the alarm
 
 ## UI behavior
 
+### Operator warning + permission gate for alarm switches
+Only the **ND280 shift leader** and the **Baby MIND expert** are allowed to operate the alarm switches (**Enable ound** / **Disable sound**).
+
+The page implements this in two ways:
+
+1. **Always-visible operator warning (top of page)**  
+   A red warning banner is shown at the top:
+   - “Only the ND280 shift leader and the Baby MIND expert are allowed to operate the alarm switch.”
+   - “Anyone other than the ND280 shift leader and the Baby MIND expert must NOT touch the alarm switch.”
+
+2. **Confirmation dialog before button actions**  
+   When a user clicks **Enable sound** or **Disable sound**, the browser shows a confirmation dialog:
+   - `Are you ND280 shift leader or Baby MIND expert?`
+   - **OK** = treated as “Yes” → proceed with the action
+   - **Cancel** = treated as “No” → block the action
+
+   If the user answers **No**, a warning box is shown under the alarm controls (and blinks on repeated attempts).
+
+> Note: This is a UI safety guard. It is not a security mechanism (anyone could still bypass it by editing the HTML/JS).
+
 ### Status banner + lamp
 - **Green (OK):** all MCRs changed within the last 30 minutes
 - **Red (WARN):** at least one MCR has not changed for > 30 minutes
@@ -165,6 +185,15 @@ The expected JSON structure is:
 - The HTML page must be served via HTTP(S) from the same site where the text files are accessible, or CORS must allow access.
 - The monitor uses `fetch(..., { cache: "no-store" })` to reduce stale reads.
 - The page previously used `<meta http-equiv="refresh">`, but it is commented out to avoid losing audio permission on reload.
+
+### Sticky UI elements (scroll behavior)
+If you do **not** want the warning/alarm UI to “stick” to the top during scrolling, ensure the following elements are **not** `position: sticky` in CSS:
+
+- `#mcr-operator-warning`
+- `#mcr-status-banner`
+- `#mcr-enable-bar`
+
+In the current version, these are set to `position: static`.
 
 ### Server-side requirement for global enable/disable
 To make the global switch work, the server must provide a writable state file and an update endpoint:

@@ -24,6 +24,25 @@ A:active {color: #990099}
 A:hover {color: #009900}
 .b{font-weight: bold}
 
+/* ===== Operator warning (top message) ===== */
+/* WARNING: Only ND280 shift leader and Baby MIND expert are allowed to operate the alarm switch. */
+#mcr-operator-warning{
+  /* position: sticky; */
+  position: static;
+  top: 0;
+  z-index: 2000; /* above other sticky bars */
+  margin: 10px 0 12px 0;
+  padding: 10px 14px;
+  border: 2px solid #990000;
+  border-radius: 10px;
+  background: #fff0f0;
+  color: #990000;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.18);
+  text-align: center;
+}
+
 /* ===== Styles for MCR monitor (similar look & feel) ===== */
 :root {
   --ok: #0ac70a;
@@ -48,7 +67,8 @@ th { background: #f0f0f0; text-align: left; }
 
 /* ===== Unified status banner ===== */
 #mcr-status-banner {
-  position: sticky; top: 0; z-index: 1000;
+  /* position: sticky; top: 0; z-index: 1000; */
+  position: static;
   display: block;
   color: var(--banner-fg);
   padding: 0.6rem 1rem; font-weight: 700; letter-spacing: 0.3px;
@@ -64,7 +84,8 @@ th { background: #f0f0f0; text-align: left; }
 
 /* ===== Sound enable bar ===== */
 #mcr-enable-bar {
-  position: sticky; top: 0; z-index: 1001;
+  /* position: sticky; top: 0; z-index: 1001; */
+  position: static;
   background: #f7f7f7; border: 1px solid #bbb; border-radius: 8px;
   padding: 8px 12px; margin-bottom: 10px; display: none;
   box-shadow: 0 6px 16px rgba(0,0,0,0.15);
@@ -121,11 +142,40 @@ th { background: #f0f0f0; text-align: left; }
 }
 
 @keyframes pulse { 0%{transform:scale(1)} 50%{transform:scale(1.03)} 100%{transform:scale(1)} }
+
+/* ===== Permission warning box (shown when user answers "No") ===== */
+#mcr-auth-warning{
+  display: none;
+  margin: 10px 0 12px 0;
+  padding: 10px 12px;
+  border: 2px solid #990000;
+  border-radius: 10px;
+  background: rgba(212,0,0,0.10);
+  font-weight: 700;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.18);
+}
+#mcr-auth-warning .title{
+  display: block;
+  margin-bottom: 6px;
+  letter-spacing: 0.2px;
+}
+#mcr-auth-warning.blink{
+  animation: blink 1.2s steps(2, start) infinite;
+}
 -->
 </STYLE>
 </HEAD>
 
 <body>
+
+<!-- ===================== Operator warning (top) ===================== -->
+<!-- WARNING: Only ND280 shift leader and Baby MIND expert are allowed to operate the alarm switch. -->
+<div id="mcr-operator-warning" role="alert" aria-live="assertive">
+  ⚠️ <b>WARNING</b>:
+  Only the ND280 shift leader and the Baby MIND expert are allowed to operate the alarm switch.
+  <b>Anyone other than the ND280 shift leader and the Baby MIND expert must NOT touch the alarm switch.</b>
+</div>
+
 
 <HR SIZE="3">
 <font size="+3"><B>Baby MIND DAQ monitor</B></font>
@@ -146,6 +196,14 @@ th { background: #f0f0f0; text-align: left; }
     Alarm status: <span id="mcr-global-state-text">Loading...</span>
   </div>
   <br>
+
+
+  <!-- Permission warning (shown only when user answers "No") -->
+  <div id="mcr-auth-warning" role="alert" aria-live="assertive">
+    <span class="title">⚠️ WARNING:</span>
+    Only the ND280 shift leader and the Baby MIND expert are allowed to operate the alarm switch.
+    Anyone other than the ND280 shift leader and the Baby MIND expert must NOT touch the alarm switch.
+  </div>
 
   🔊 To allow alarms to play automatically, please click:
   <button id="mcr-enable-sound">Enable sound (click once)</button>
@@ -597,9 +655,9 @@ th { background: #f0f0f0; text-align: left; }
 
     } else {
       if (!testAlarmPlaying) startOrStopAlarm(false);
-  　}
+    }
 
-  　lastIsOk = allOk;
+    lastIsOk = allOk;
   }
 
   /* ===================== Sound buttons ===================== */
@@ -608,12 +666,37 @@ th { background: #f0f0f0; text-align: left; }
     const btnEnable = document.getElementById("mcr-enable-sound");
     const btnDisable = document.getElementById("mcr-disable-sound");
     const beep = document.getElementById("mcr-beep-sound");
+    const warnBox = document.getElementById("mcr-auth-warning");
+
+    /* Ask for permission before allowing alarm switch operations. */
+    function confirmAuthorizedOrWarn() {
+      // confirm() returns true for "OK" (= Yes), false for "Cancel" (= No)
+      const ok = window.confirm("Are you ND280 shift leader or Baby MIND expert?");
+      if (ok) {
+        if (warnBox) {
+          warnBox.style.display = "none";
+          warnBox.classList.remove("blink");
+        }
+        return true;
+      }
+
+      // User answered "No": show warning message and block the operation.
+      if (warnBox) {
+        warnBox.style.display = "block";
+        // Add blink to make it noticeable if repeatedly attempted.
+        warnBox.classList.add("blink");
+      }
+      return false;
+    }
 
     if (bar) bar.style.display = "block";
 
     if (btnEnable) {
       btnEnable.addEventListener("click", async () => {
         try {
+          // Block unauthorized operations (global enable/disable is shared across PCs).
+          if (!confirmAuthorizedOrWarn()) return;
+
           // First click: unlock audio permission
           if (!soundEnabled) {
             beep.volume = 0.01;
@@ -660,6 +743,9 @@ th { background: #f0f0f0; text-align: left; }
 
     if (btnDisable) {
         btnDisable.addEventListener("click", async () => {
+        // Block unauthorized operations.
+        if (!confirmAuthorizedOrWarn()) return;
+
         // Disable alarm globally (shared), and also stop local sound immediately.
         await setGlobalEnabled(false);
 
